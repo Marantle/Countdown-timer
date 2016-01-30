@@ -1,11 +1,19 @@
 package application;
 
 import java.awt.GraphicsEnvironment;
+import java.awt.RenderingHints;
+import java.awt.font.FontRenderContext;
+import java.awt.geom.Rectangle2D;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import javafx.animation.Animation;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.IntegerProperty;
@@ -14,14 +22,17 @@ import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
+import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.scene.control.ColorPicker;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
@@ -32,6 +43,9 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.input.ScrollEvent;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.BorderPane;
@@ -44,14 +58,17 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
+import javafx.stage.WindowEvent;
+import javafx.util.Duration;
 import javafx.util.converter.NumberStringConverter;
 
 public class Main extends Application {
 	private ObjectProperty<Color> bgc = new SimpleObjectProperty<>();
 	private ObjectProperty<LocalTime> timeProp = new SimpleObjectProperty<>();
-//	private TextField lblGreenVal = new TextField();
-//	private TextField lblBlueVal = new TextField();
-//	private TextField lblRedVal = new TextField();
+	// private TextField lblGreenVal = new TextField();
+	// private TextField lblBlueVal = new TextField();
+	// private TextField lblRedVal = new TextField();
 	private TextField lblFontVal = new TextField();
 	private StackPane sp = new StackPane();
 	private Button btnStart = new Button("Start!");
@@ -62,20 +79,43 @@ public class Main extends Application {
 	private TextField tfSeconds;
 	private Label timeRemaining;
 	private IntegerProperty timeLeft = new SimpleIntegerProperty();
-	Timer timer = new Timer();
 	DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 	private TextField taAddH;
 	private TextField taAddM;
 	private TextField taAddS;
 	private String timeFontType = "BuiltTitlingRg-Regular";
+	private Stage primaryStage;
+	private Scene scene;
+	private VBox rightControlsBox;
+	private BorderPane root;
+	protected double initialX;
+	protected double initialY;
+	private MenuBar menuBar;
+	private BackgroundFill bgfT = new BackgroundFill(Color.TRANSPARENT, CornerRadii.EMPTY, Insets.EMPTY);;
+	private Background transparentBg = new Background(bgfT);
+	private BackgroundFill bgfW = new BackgroundFill(Color.WHITE, CornerRadii.EMPTY, Insets.EMPTY);;
+	private Background whiteBg = new Background(bgfW);
+	private BackgroundFill bgfR = new BackgroundFill(Color.INDIANRED, CornerRadii.EMPTY, Insets.EMPTY);;
+	private Background redBg = new Background(bgfT);
+	private Background oldBg;
+	private MenuItem itemOnTop;
+	private MenuItem itemBgVis;
+	private Timeline timeline;
+	private boolean playing;
+	private Button btnPlayPause = new Button("Play/Pause");
+	private Color labelSetColor;
+
 	@Override
 	public void start(Stage primaryStage) {
+		this.primaryStage = primaryStage;
+		this.primaryStage.initStyle(StageStyle.TRANSPARENT);
 		primaryStage.setOnCloseRequest(e -> {
 			System.exit(0);
 		});
 		try {
-			BorderPane root = new BorderPane();
+			root = new BorderPane();
 			Scene scene = new Scene(root, 900, 600);
+			this.scene = scene;
 			tfHours = new TextField("13");
 			Label lblHours = new Label("Hours: ");
 
@@ -138,7 +178,7 @@ public class Main extends Application {
 			tfMinutes.setPrefWidth(100);
 			tfSeconds.setPrefWidth(100);
 
-			Button btnAddH = new Button("+H|F1");
+			Button btnAddH = new Button("Add to hours, shortcut: F1");
 			taAddH = new TextField("1");
 			taAddH.setOnKeyPressed(new EventHandler<KeyEvent>() {
 				@Override
@@ -160,7 +200,7 @@ public class Main extends Application {
 					}
 				}
 			});
-			taAddH.setPrefWidth(35);
+			taAddH.setPrefWidth(50);
 			taAddH.textProperty().addListener(new ChangeListener<String>() {
 
 				@Override
@@ -185,7 +225,7 @@ public class Main extends Application {
 				addHours(taAddH.getText());
 			});
 
-			Button btnAddM = new Button("+M|F2");
+			Button btnAddM = new Button("Add to minutes, shortcut: F2");
 			taAddM = new TextField("15");
 			taAddM.setOnKeyPressed(new EventHandler<KeyEvent>() {
 				@Override
@@ -207,12 +247,12 @@ public class Main extends Application {
 					}
 				}
 			});
-			taAddM.setPrefWidth(35);
+			taAddM.setPrefWidth(50);
 			btnAddM.setOnAction(e -> {
 				addMinutes(taAddM.getText());
 			});
 
-			Button btnAddS = new Button("+S|F3");
+			Button btnAddS = new Button("Add to seconds, shortcut F3");
 			taAddS = new TextField("15");
 			taAddS.setOnKeyPressed(new EventHandler<KeyEvent>() {
 				@Override
@@ -234,7 +274,7 @@ public class Main extends Application {
 					}
 				}
 			});
-			taAddS.setPrefWidth(35);
+			taAddS.setPrefWidth(50);
 			btnAddS.setOnAction(e -> {
 				addSeconds(taAddS.getText());
 			});
@@ -246,8 +286,12 @@ public class Main extends Application {
 			Region reg3 = new Region();
 			reg3.setPrefWidth(10);
 
-			HBox controls = new HBox(btnStart, btnStop, btnPause);
-			HBox controls2 = new HBox(taAddH, btnAddH, reg, taAddM, btnAddM, reg2, taAddS, btnAddS);
+			HBox controls = new HBox(btnStart, btnStop, btnPlayPause);
+			HBox hourControl = new HBox(taAddH, new Label("->"), btnAddH);
+			HBox minuteControl = new HBox(taAddM, new Label("->"), btnAddM);
+			HBox secondControl = new HBox(taAddS, new Label("->"), btnAddS);
+			
+			VBox controls2 = new VBox(hourControl, minuteControl, secondControl);
 
 			controls.setSpacing(10);
 
@@ -293,127 +337,9 @@ public class Main extends Application {
 				}
 			});
 
-			// Label lblRed = new Label("Red");
-			// Label lblBlue = new Label("Blue");
-			// Label lblGreen = new Label("Green");
 			Label lblFont = new Label("Textsize:");
-			// lblRed.setPrefWidth(50);
-			// lblBlue.setPrefWidth(50);
-			// lblGreen.setPrefWidth(50);
-			lblFont.setPrefWidth(80);
 
-			// Slider redSlider = new Slider();
-			// redSlider.setPrefWidth(150);
-			// redSlider.setMin(0);
-			// redSlider.setMax(255);
-			// redSlider.setValue(0);
-			// redSlider.setShowTickLabels(true);
-			// redSlider.setShowTickMarks(true);
-			// redSlider.setMajorTickUnit(51);
-			// redSlider.setMinorTickCount(15);
-			// redSlider.setBlockIncrement(10);
-			// redSlider.valueProperty().addListener((ChangeListener<Number>)
-			// (observable, oldValue, newValue) -> redSlider
-			// .setValue(Math.round(newValue.doubleValue())));
-			// lblRedVal.textProperty().bindBidirectional(redSlider.valueProperty(),
-			// new NumberStringConverter());
-			// lblRedVal.setPrefWidth(35);
-			// lblRedVal.textProperty().addListener((ChangeListener<String>)
-			// (observable, oldValue, newValue) -> {
-			// System.out.println(newValue);
-			// if (newValue.equals("")) {
-			// lblRedVal.setText("0");
-			// return;
-			// } else {
-			// try {
-			// int i = Integer.parseInt(newValue);
-			// if (i < 0 || i > 255)
-			// throw new NumberFormatException();
-			// } catch (NumberFormatException e) {
-			// lblRedVal.setText(oldValue);
-			// return;
-			// }
-			// }
-			// lblRedVal.setText(Integer.parseInt(newValue) + "");
-			// fireColorChange();
-			// });
-			// red.getChildren().addAll(lblRed, redSlider, lblRedVal);
-			//
-			// Slider blueSlider = new Slider();
-			// blueSlider.setPrefWidth(150);
-			// blueSlider.setMin(0);
-			// blueSlider.setMax(255);
-			// blueSlider.setValue(0);
-			// blueSlider.setShowTickLabels(true);
-			// blueSlider.setShowTickMarks(true);
-			// blueSlider.setMajorTickUnit(51);
-			// blueSlider.setMinorTickCount(15);
-			// blueSlider.setBlockIncrement(10);
-			// blueSlider.valueProperty().addListener((ChangeListener<Number>)
-			// (observable, oldValue,
-			// newValue) ->
-			// blueSlider.setValue(Math.round(newValue.doubleValue())));
-			// lblBlueVal.textProperty().bindBidirectional(blueSlider.valueProperty(),
-			// new NumberStringConverter());
-			// lblBlueVal.setPrefWidth(35);
-			// lblBlueVal.textProperty().addListener((ChangeListener<String>)
-			// (observable, oldValue, newValue) -> {
-			// System.out.println(newValue);
-			// if (newValue.equals("")) {
-			// lblBlueVal.setText("0");
-			// return;
-			// } else {
-			// try {
-			// int i = Integer.parseInt(newValue);
-			// if (i < 0 || i > 255)
-			// throw new NumberFormatException();
-			// } catch (NumberFormatException e) {
-			// lblBlueVal.setText(oldValue);
-			// return;
-			// }
-			// }
-			// lblBlueVal.setText(Integer.parseInt(newValue) + "");
-			// fireColorChange();
-			// });
-			// blue.getChildren().addAll(lblBlue, blueSlider, lblBlueVal);
-			//
-			//// Slider greenSlider = new Slider();
-			// greenSlider.setPrefWidth(150);
-			// greenSlider.setMin(0);
-			// greenSlider.setMax(255);
-			// greenSlider.setValue(255);
-			// greenSlider.setShowTickLabels(true);
-			// greenSlider.setShowTickMarks(true);
-			// greenSlider.setMajorTickUnit(51);
-			// greenSlider.setMinorTickCount(15);
-			// greenSlider.setBlockIncrement(10);
-			// greenSlider.valueProperty().addListener((ChangeListener<Number>)
-			// (observable, oldValue,
-			// newValue) ->
-			// greenSlider.setValue(Math.round(newValue.doubleValue())));
-			// lblGreenVal.textProperty().bindBidirectional(greenSlider.valueProperty(),
-			// new NumberStringConverter());
-			// lblGreenVal.setPrefWidth(35);
-			// lblGreenVal.textProperty().addListener((ChangeListener<String>)
-			// (observable, oldValue, newValue) -> {
-			// System.out.println(newValue);
-			// if (newValue.equals("")) {
-			// lblGreenVal.setText("0");
-			// return;
-			// } else {
-			// try {
-			// int i = Integer.parseInt(newValue);
-			// if (i < 0 || i > 255)
-			// throw new NumberFormatException();
-			// } catch (NumberFormatException e) {
-			// lblGreenVal.setText(oldValue);
-			// return;
-			// }
-			// }
-			// lblGreenVal.setText(Integer.parseInt(newValue) + "");
-			// fireColorChange();
-			// });
-			// green.getChildren().addAll(lblGreen, greenSlider, lblGreenVal);
+			lblFont.setPrefWidth(80);
 
 			ColorPicker bgPicker = new ColorPicker();
 			bgPicker.setOnAction(e -> {
@@ -439,7 +365,6 @@ public class Main extends Application {
 			lblFontVal.textProperty().bindBidirectional(fontSlider.valueProperty(), new NumberStringConverter());
 			lblFontVal.setPrefWidth(35);
 			lblFontVal.textProperty().addListener((ChangeListener<String>) (observable, oldValue, newValue) -> {
-				System.out.println(newValue);
 				if (newValue.equals("")) {
 					lblFontVal.setText("10");
 					return;
@@ -470,6 +395,10 @@ public class Main extends Application {
 				handleReset();
 			});
 
+			btnPlayPause.setOnAction(e-> {
+				handlePausePlay();	
+			});
+			
 			// Rectangle bg = new Rectangle();
 			Color bgColor = Color.rgb(0, 255, 0, 1);
 
@@ -484,16 +413,19 @@ public class Main extends Application {
 
 			sp.setBackground(new Background(bgf));
 			timeRemaining = new Label("00:00:00");
+			addDraggableNode(sp);
+			addDraggableNode(timeRemaining);
+			makeTimeLabelMenu(timeRemaining);
 			timeRemaining.setTextAlignment(TextAlignment.LEFT);
 
 			timeRemaining.setFont(new Font(timeFontType, 30));
 			sp.getChildren().add(timeRemaining);
 			ComboBox<String> fontCb = new ComboBox<>();
 			fontCb.setMaxWidth(150);
-			
-			java.awt.Font[] fonts = GraphicsEnvironment.getLocalGraphicsEnvironment().getAllFonts();
 
-			for (java.awt.Font f : fonts) {
+			List<java.awt.Font> monoFonts1 = getAllFonts();
+
+			for (java.awt.Font f : monoFonts1) {
 				fontCb.getItems().add(f.getFontName());
 			}
 			fontCb.getSelectionModel().select("BuiltTitlingRg-Regular");
@@ -510,18 +442,23 @@ public class Main extends Application {
 			Label fontColorLabel = new Label("Font Color:");
 			fontColorLabel.setPrefWidth(80);
 			HBox fontColorBox = new HBox(fontColorLabel, cPicker);
-			VBox timeBox = new VBox(hbHours, hbMinutes, hbSeconds, controls, controls2,
-					bgColorBox, /* red, green, blue,*/ font, /* fontColor, */fontColorBox, fontBox);
+			rightControlsBox = new VBox(hbHours, hbMinutes, hbSeconds, controls, controls2, bgColorBox,
+					/* red, green, blue, */ font, /* fontColor, */fontColorBox, fontBox);
 			fontCb.setOnAction(e -> {
 				fireFontTypeChange(fontCb.getSelectionModel().getSelectedItem());
 			});
 
-			timeBox.setSpacing(10);
+			rightControlsBox.setSpacing(10);
 			// timeBox.setMinWidth(200);
 
 			final Menu menu = new Menu("Help");
 			MenuItem menuitem = new MenuItem("About");
+			MenuItem menuitem2 = new MenuItem("Controls");
+			MenuItem menuclose = new MenuItem("Exit");
 
+			menuclose.setOnAction(e -> {
+				System.exit(0);
+			});
 			menuitem.setOnAction(e -> {
 				Alert alert = new Alert(AlertType.INFORMATION);
 				alert.setTitle("About");
@@ -531,13 +468,50 @@ public class Main extends Application {
 
 				alert.showAndWait();
 			});
-			menu.getItems().add(menuitem);
-			MenuBar menuBar = new MenuBar();
+			
+			menuitem2.setOnAction(e -> {
+				Alert alert = new Alert(AlertType.INFORMATION);
+				alert.setTitle("Help");
+				alert.setHeaderText(null);
+				alert.getDialogPane().setPrefSize(630, 350);
+				StringBuilder sb = new StringBuilder();
+				sb.append("You can drag the window with mouse button from the colored box or the time itself.");
+				sb.append("\n");
+				sb.append("\n");
+				sb.append("Insert the starting time in the top three text boxes.");
+				sb.append("\n");
+				sb.append("Start button starts/restarts the timer from the time in those boxes.");
+				sb.append("\n");
+				sb.append("Stop button resets the timer to 0 and Play/Pause(shortcut Space bar) button pauses it until pressed again.");
+				sb.append("\n");
+				sb.append("\n");
+				sb.append("Next are three text boxes with buttons, by pressing the button you will add the");
+				sb.append("\n");
+				sb.append(" the amount of time in the text box to the hour/minutes/seconds depending on the button.");
+				sb.append("\n");
+				sb.append("\n");
+				sb.append("Rest of the controls are simpler and control the background color for chromakey effect,");
+				sb.append("\n");
+				sb.append(" the font of the timer, its color and its size, you may also mousewheel to change the size");
+				sb.append("\n");
+				sb.append("\n");
+				sb.append("Right click the time itself to show additional controls that let you hide everything but the timer");
+				sb.append("\n");
+				sb.append(", you can still drag it with the mouse button and use the shortcuts: F1, F2, F3 and Space bar");
+				sb.append("\n");
+				sb.append("The other option is to toggle always on top, click that to do as it says and click it again to disable it");
+				sb.append("\n");
+				alert.setContentText(sb.toString());
+
+				alert.showAndWait();
+			});
+			menu.getItems().addAll(menuitem, menuitem2, menuclose);
+			menuBar = new MenuBar();
 			menuBar.getMenus().addAll(menu);
 
-			timeRemaining.setTextFill(Color.WHITE);
+			timeRemaining.setTextFill(Color.BLACK);
 			root.setCenter(sp);
-			root.setRight(timeBox);
+			root.setRight(rightControlsBox);
 			root.setTop(menuBar);
 			scene.setOnKeyPressed(new EventHandler<KeyEvent>() {
 				@Override
@@ -552,12 +526,26 @@ public class Main extends Application {
 					case F3:
 						addSeconds(taAddS.getText());
 						break;
+					case SPACE:
+						handlePausePlay();
+						break;
 					default:
 						break;
 					}
 				}
 			});
-
+			scene.setOnScroll(e -> {
+				if (e.getDeltaY() > 0) {
+					double d = timeRemaining.getFont().getSize();
+					fireFontChange((int)(d+1) + "");
+					lblFontVal.setText((int)(d+5) + "");
+				} else {
+					double d = timeRemaining.getFont().getSize();
+					fireFontChange((int)(d-1) + "");
+					lblFontVal.setText((int)(d-5) + "");
+				}
+			});
+			
 			scene.getStylesheets().add(getClass().getResource("application.css").toExternalForm());
 			primaryStage.setScene(scene);
 			primaryStage.show();
@@ -566,8 +554,131 @@ public class Main extends Application {
 		}
 	}
 
+	private List<java.awt.Font> getAllFonts() {
+		java.awt.Font[] fonts = GraphicsEnvironment.getLocalGraphicsEnvironment().getAllFonts();
+		List<java.awt.Font> monoFonts1 = new ArrayList<>();
+		FontRenderContext frc = new FontRenderContext(null, RenderingHints.VALUE_TEXT_ANTIALIAS_DEFAULT,
+				RenderingHints.VALUE_FRACTIONALMETRICS_DEFAULT);
+		for (java.awt.Font f : fonts) {
+			Rectangle2D Boundsi = f.getStringBounds("i", frc);
+			Rectangle2D Boundsm = f.getStringBounds("m", frc);
+			Rectangle2D Bounds0 = f.getStringBounds("0", frc);
+			Rectangle2D Bounds1 = f.getStringBounds("1", frc);
+			Rectangle2D Bounds2 = f.getStringBounds("2", frc);
+			Rectangle2D Bounds3 = f.getStringBounds("3", frc);
+			Rectangle2D Bounds4 = f.getStringBounds("4", frc);
+			Rectangle2D Bounds5 = f.getStringBounds("5", frc);
+			Rectangle2D Bounds6 = f.getStringBounds("6", frc);
+			Rectangle2D Bounds7 = f.getStringBounds("7", frc);
+			Rectangle2D Bounds8 = f.getStringBounds("8", frc);
+			Rectangle2D Bounds9 = f.getStringBounds("9", frc);
+			if (Bounds0.getWidth() == Bounds1.getWidth())
+				if (Bounds1.getWidth() == Bounds2.getWidth())
+					if (Bounds2.getWidth() == Bounds3.getWidth())
+						if (Bounds3.getWidth() == Bounds4.getWidth())
+							if (Bounds4.getWidth() == Bounds5.getWidth())
+								if (Bounds5.getWidth() == Bounds6.getWidth())
+									if (Bounds6.getWidth() == Bounds7.getWidth())
+										if (Bounds7.getWidth() == Bounds8.getWidth())
+											if (Bounds8.getWidth() == Bounds9.getWidth())
+												if (Bounds9.getWidth() == Boundsi.getWidth())
+													if (Boundsi.getWidth() == Boundsm.getWidth())
+														monoFonts1.add(f);
+
+		}
+		return monoFonts1;
+	}
+
+	private void makeTimeLabelMenu(Label timeRemaining2) {
+
+		final ContextMenu contextMenu = new ContextMenu();
+		contextMenu.setOnShowing(new EventHandler<WindowEvent>() {
+			public void handle(WindowEvent e) {
+				System.out.println("showing");
+			}
+		});
+		contextMenu.setOnShown(new EventHandler<WindowEvent>() {
+			public void handle(WindowEvent e) {
+				System.out.println("shown");
+			}
+		});
+
+		itemBgVis = new MenuItem("Click to hide background");
+		itemBgVis.setOnAction(new EventHandler<ActionEvent>() {
+			public void handle(ActionEvent e) {
+				toggleBackGroundVisibility();
+			}
+
+		});
+		itemOnTop = new MenuItem("Click to enable Always On Top");
+		itemOnTop.setOnAction(new EventHandler<ActionEvent>() {
+			public void handle(ActionEvent e) {
+				toggleAlwaysOnTop();
+			}
+
+		});
+		contextMenu.getItems().addAll(itemBgVis, itemOnTop);
+		timeRemaining2.setContextMenu(contextMenu);
+	}
+
+	protected void toggleAlwaysOnTop() {
+		this.primaryStage.setAlwaysOnTop(!this.primaryStage.isAlwaysOnTop());
+
+		if (this.primaryStage.isAlwaysOnTop()) {
+			itemOnTop.setText("Click to disable Always On Top");
+		} else {
+			itemOnTop.setText("Click to enable Always On Top");
+		}
+
+	}
+
+	protected void toggleBackGroundVisibility() {
+		System.out.println("jou transparent");
+		if (scene.getFill().equals(Color.TRANSPARENT)) {
+			System.out.println("going white");
+			scene.setFill(Color.WHITE);
+			root.setBackground(whiteBg);
+			sp.setBackground(oldBg);
+			itemBgVis.setText("Click to hide background");
+		} else {
+			System.out.println("going transparent");
+			scene.setFill(Color.TRANSPARENT);
+
+			root.setBackground(transparentBg);
+			oldBg = sp.getBackground();
+			sp.setBackground(transparentBg);
+			itemBgVis.setText("Click to show background");
+		}
+		menuBar.setVisible(!menuBar.isVisible());
+		rightControlsBox.setVisible(!rightControlsBox.isVisible());
+	}
+
 	private void fireFontColorChange(Color color) {
 		timeRemaining.setTextFill(color);
+	}
+
+	private void addDraggableNode(final Node node) {
+
+		node.setOnMousePressed(new EventHandler<MouseEvent>() {
+
+			@Override
+			public void handle(MouseEvent me) {
+				if (me.getButton() != MouseButton.MIDDLE) {
+					initialX = me.getSceneX();
+					initialY = me.getSceneY();
+				}
+			}
+		});
+
+		node.setOnMouseDragged(new EventHandler<MouseEvent>() {
+			@Override
+			public void handle(MouseEvent me) {
+				if (me.getButton() != MouseButton.MIDDLE) {
+					node.getScene().getWindow().setX(me.getScreenX() - initialX);
+					node.getScene().getWindow().setY(me.getScreenY() - initialY);
+				}
+			}
+		});
 	}
 
 	private void fireFontTypeChange(String string) {
@@ -605,9 +716,28 @@ public class Main extends Application {
 		timeRemaining.setText(timeProp.get().format(formatter));
 	}
 
+	private void handlePausePlay() {
+		if (timeline == null)
+			return;
+		
+		if (playing) {
+			timeline.pause();
+			timeRemaining.setBackground(redBg);
+			labelSetColor = (Color) timeRemaining.getTextFill();
+			fireFontColorChange(Color.RED);
+			playing = false;
+		} else {
+			timeline.play();
+			fireFontColorChange(labelSetColor);
+			playing = true;
+		}
+	}
 	private void handleReset() {
-		if (timer != null)
-			timer.cancel();
+		if (timeline != null) {
+			timeline.stop();
+			timeline = null;
+			playing = false;
+		}
 		Integer.parseInt(tfHours.getText());
 		Integer.parseInt(tfMinutes.getText());
 		Integer.parseInt(tfSeconds.getText());
@@ -615,8 +745,11 @@ public class Main extends Application {
 	}
 
 	private void handleStart() {
-		if (timer != null)
-			timer.cancel();
+		if (timeline != null) {
+			timeline.stop();
+			timeline = null;
+			playing = false;
+		}
 		int hours = Integer.parseInt(tfHours.getText());
 		int minutes = Integer.parseInt(tfMinutes.getText());
 		int seconds = Integer.parseInt(tfSeconds.getText());
@@ -629,24 +762,20 @@ public class Main extends Application {
 		timeProp.set(t);
 
 		timeRemaining.setText(t.format(formatter));
-
-		timer = new Timer();
-		timer.scheduleAtFixedRate(new TimerTask() {
-
-			public void run() {
-				final LocalTime time = timeProp.get().minusSeconds(1);
-				timeProp.set(time);
-				System.out.println(time);
-				Platform.runLater(new Runnable() {
-					public void run() {
-						timeRemaining.setText(time.format(formatter));
-						if (time.format(formatter).equals("00:00:00"))
-							timer.cancel();
-					}
-				});
-				// oldT = newT.minusSeconds(0);
-			}
-		}, 0, 1000);
+		timeline = new Timeline(new KeyFrame(Duration.millis(1000), ae -> {
+			final LocalTime time = timeProp.get().minusSeconds(1);
+			timeProp.set(time);
+//			Platform.runLater(new Runnable() {
+//				public void run() {
+					timeRemaining.setText(time.format(formatter));
+					if (time.format(formatter).equals("00:00:00"))
+						timeline.stop();
+//				}
+//			});
+		}));
+		timeline.setCycleCount(Animation.INDEFINITE);
+		timeline.play();
+		playing = true;
 	}
 
 	private void handlePause() {
